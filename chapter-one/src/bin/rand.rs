@@ -1,4 +1,5 @@
 extern crate rand;
+use rand::SeedableRng;
 
 fn main() {
     // random_num1 will be any integer between
@@ -26,18 +27,18 @@ fn main() {
     }
     // A generator enables us to use ranges
     // random_num3 will be between 0 and 9
-    let random_num3 = rng.gen_range(0, 10);
+    let random_num3 = rng.gen_range(0..10);
     println!("random_num3: {}", random_num3);
 
     // random_float will be between 0.0 and 0.999999999999...
-    let random_float = rng.gen_range(0.0, 1.0);
+    let random_float = rng.gen_range(0.0..1.0);
     println!("random_float: {}", random_float);
 
     // Per default, the generator uses a uniform distribution,
     // which should be good enough for nearly all of your
     // use cases. If you require a particular distribution,
     // you specify it when creating the generator:
-    let mut chacha_rng = rand::ChaChaRng::new_unseeded();
+    let mut chacha_rng = rand_chacha::ChaChaRng::from_seed([0u8; 32]);
     let random_chacha_num = chacha_rng.gen::<i32>();
     println!("random_chacha_num: {}", random_chacha_num);
 }
