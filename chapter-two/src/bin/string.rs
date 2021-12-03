@@ -17,7 +17,7 @@ fn main() {
     // A String in Rust will always be valid UTF-8
     let s = "汉语 한글 Þjóðhildur 😉 🍺".to_string();
     println!("s: {}", s);
-    
+
     // Append strings to each other
     let mut s = "Hello ".to_string();
     s.push_str("World");
@@ -62,7 +62,7 @@ fn main() {
     // it will result in the empty string
     let s: Vec<_> = "::Hi::There::".split("::").collect();
     println!("{:?}", s);
-    
+
     // If you can eliminate the empty strings at the end
     // by using split_termitor
     let s: Vec<_> = "Mr. T.".split_terminator('.').collect();
@@ -114,10 +114,10 @@ fn main() {
     let username = "   P3ngu1n\n".trim();
     println!("{}", username);
     // Remove only leading whitespace
-    let username = "   P3ngu1n\n".trim_left();
+    let username = "   P3ngu1n\n".trim_start();
     println!("{}", username);
     // Remove only trailing whitespace
-    let username = "   P3ngu1n\n".trim_right();
+    let username = "   P3ngu1n\n".trim_end();
     println!("{}", username);
 
 
