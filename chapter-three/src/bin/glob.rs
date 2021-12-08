@@ -22,7 +22,7 @@ fn main() {
         "All files that contain the word \"ferris\" case insensitive \
          and don't contain an underscore:"
     );
-    for entry in glob_with("*Ferris[!_]*", &options).expect("Failed to read glob pattern") {
+    for entry in glob_with("*Ferris[!_]*", options).expect("Failed to read glob pattern") {
         if let Ok(path) = entry {
             println!("{:?}", path.display())
         }

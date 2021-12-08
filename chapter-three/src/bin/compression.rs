@@ -3,7 +3,7 @@ extern crate flate2;
 use std::io::{self, SeekFrom};
 use std::io::prelude::*;
 
-use flate2::{Compression, FlateReadExt};
+use flate2::Compression;
 use flate2::write::ZlibEncoder;
 use flate2::read::ZlibDecoder;
 
@@ -60,7 +60,7 @@ fn main() {
 
 fn encode_bytes(bytes: &[u8]) -> io::Result<Vec<u8>> {
     // You can choose your compression algorithm and its efficiency
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::Default);
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
     encoder.write_all(bytes)?;
     encoder.finish()
 }
@@ -73,17 +73,15 @@ fn decode_bytes(bytes: &[u8]) -> io::Result<Vec<u8>> {
 }
 
 
-fn encode_file(file: &mut Read) -> io::Result<Vec<u8>> {
-    // Files have a built-in encoder
-    let mut encoded = file.zlib_encode(Compression::Best);
-    let mut buffer = Vec::new();
-    encoded.read_to_end(&mut buffer)?;
-    Ok(buffer)
+fn encode_file(file: &mut dyn Read) -> io::Result<Vec<u8>> {
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
+    std::io::copy(file, &mut encoder)?;
+    encoder.finish()
 }
 
-fn decode_file(file: &mut Read) -> io::Result<Vec<u8>> {
+fn decode_file(file: &mut dyn Read) -> io::Result<Vec<u8>> {
+    let mut encoder = ZlibDecoder::new(file);
     let mut buffer = Vec::new();
-    // Files have a built-in decoder
-    file.zlib_decode().read_to_end(&mut buffer)?;
+    encoder.read_to_end(&mut buffer)?;
     Ok(buffer)
 }
