@@ -65,7 +65,7 @@ fn main() {
     println!("Our binary tree looks like this: {:?}", root);
 
     // Polymorphism
-    let mut zoo: Vec<Box<Animal>> = Vec::new();
+    let mut zoo: Vec<Box<dyn Animal>> = Vec::new();
     zoo.push(Box::new(Dog {}));
     zoo.push(Box::new(Cat {}));
     for animal in zoo {
@@ -87,13 +87,13 @@ fn main() {
 }
 
 // Via trait objects we can return any iterator
-fn caps_words_iter<'a>(text: &'a str) -> Box<Iterator<Item = String> + 'a> {
+fn caps_words_iter<'a>(text: &'a str) -> Box<dyn Iterator<Item = String> + 'a> {
     // Return an iterator over every word converted into ALL_CAPS
     Box::new(text.trim().split(' ').map(|word| word.to_uppercase()))
 }
 
 // Same goes for errors
-fn read_file_as_number(filename: &str) -> Result<i32, Box<Error>> {
+fn read_file_as_number(filename: &str) -> Result<i32, Box<dyn Error>> {
     let file = File::open(filename)?;
     let mut buf_reader = BufReader::new(file);
     let mut content = String::new();
@@ -102,6 +102,6 @@ fn read_file_as_number(filename: &str) -> Result<i32, Box<Error>> {
     Ok(number)
 }
 
-fn create_multiplier(a: i32) -> Box<Fn(i32) -> i32> {
+fn create_multiplier(a: i32) -> Box<dyn Fn(i32) -> i32> {
     Box::new(move |b| a * b)
 }

@@ -9,7 +9,7 @@ struct Ball;
 fn main() {
     {
         // rc is created and count is at 1
-        let foo = Rc::new("foo");
+        let _foo = Rc::new("foo");
         // foo goes out of scope; count decreases
         // count is zero; the object gets destroyed
     }
@@ -18,7 +18,7 @@ fn main() {
         // rc is created and count is at 1
         let bar = Rc::new("bar");
         // rc is cloned; count increases to 2
-        let second_bar = Rc::clone(&bar);
+        let _second_bar = Rc::clone(&bar);
         // bar goes out of scode; count decreases to 1
         // bar goes out of scode; count decreases to 0
     }
@@ -28,16 +28,16 @@ fn main() {
         let baz = Rc::new("baz");
         {
             // rc is cloned; count increases to 2
-            let second_baz = Rc::clone(&baz);
+            let _second_baz = Rc::clone(&baz);
             // second_baz goes out of scode; count decreases to 1
         }
         // baz goes out of scode; count decreases to 0
     }
     let kid_one = spawn_kid_with_new_ball();
-    let kid_two = Kid {
+    let _kid_two = Kid {
         ball: Rc::clone(&kid_one.ball),
     };
-    let kid_three = Kid {
+    let _kid_three = Kid {
         ball: Rc::clone(&kid_one.ball),
     };
     // ball lives until here

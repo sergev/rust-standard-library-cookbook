@@ -43,14 +43,14 @@ impl<T> AsRef<Vec<T>> for DoubleVec<T> {
 
 fn main() {
     // The following three are equivalent
-    let hello_world = "Hello World".to_string();
-    let hello_world: String = "Hello World!".into();
-    let hello_world = String::from("Hello World!");
+    let _hello_world = "Hello World".to_string();
+    let _hello_world: String = "Hello World!".into();
+    let _hello_world = String::from("Hello World!");
 
     // Vec<u8> implements From<&str>
     // so hello_world_bytes has the value b"Hello World!"
-    let hello_world_bytes: Vec<u8> = "Hello World!".into();
-    let hello_world_bytes = Vec::<u8>::from("Hello World!");
+    let _hello_world_bytes: Vec<u8> = "Hello World!".into();
+    let _hello_world_bytes = Vec::<u8>::from("Hello World!");
 
     // We can convert a Vec<T: MulAssign<i32>> into a DoubleVec
     let vec = vec![1, 2, 3];

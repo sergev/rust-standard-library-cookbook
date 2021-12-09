@@ -16,7 +16,7 @@ struct Customer {
 }
 
 // Send news to every customer that wants to receive them
-fn publish_news(msg: &str, sender: &EmailSender, customers: &[Customer]) -> Option<i32> {
+fn publish_news(msg: &str, sender: &dyn EmailSender, customers: &[Customer]) -> Option<i32> {
     let mut count = 0;
     let mut mail = Email {
         from: "Rust Newsletter".to_string(),

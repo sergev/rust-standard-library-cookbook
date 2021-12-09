@@ -1,5 +1,4 @@
-#[macro_use]
-extern crate bitflags;
+use bitflags::bitflags;
 
 bitflags! {
     struct Spices: u32 {
