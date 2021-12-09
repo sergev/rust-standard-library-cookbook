@@ -2,6 +2,8 @@
 authors = ["Jan Nils Ferner"]
 name = "chapter_four"
 version = "0.1.0"
+edition = "2021"
+
 [dependencies]
 csv = "1.1.6"
 serde = "1.0.130"

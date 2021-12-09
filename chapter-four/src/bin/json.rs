@@ -1,9 +1,4 @@
-extern crate serde;
-extern crate serde_json;
-
-#[macro_use]
-extern crate serde_derive;
-
+use serde_derive::{Serialize, Deserialize};
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::fs::OpenOptions;
 

@@ -1,4 +1,3 @@
-extern crate byteorder;
 use std::io::{Cursor, Seek, SeekFrom};
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
 

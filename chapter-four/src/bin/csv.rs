@@ -1,9 +1,5 @@
-extern crate csv;
-
-
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::fs::OpenOptions;
-
 
 fn main() {
     let file = OpenOptions::new()

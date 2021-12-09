@@ -1,4 +1,3 @@
-extern crate byteorder;
 use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt, BE, LE};
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read};

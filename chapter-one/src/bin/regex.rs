@@ -1,7 +1,6 @@
-extern crate regex;
+use regex::{Regex, RegexBuilder};
 
 fn main() {
-    use regex::Regex;
     // Beginning a string with 'r' makes it a raw string,
     // in which you don't need to escape any symbols
     let date_regex = Regex::new(r"^\d{2}.\d{2}.\d{4}$").expect("Failed to create regex");
@@ -32,7 +31,7 @@ fn main() {
     println!("In american format:\t{}", text_with_american_dates);
     let rust_regex = Regex::new(r"(?i)rust").expect("Failed to create regex");
     println!("Do we match RuSt? {}", rust_regex.is_match("RuSt"));
-    use regex::RegexBuilder;
+
     let rust_regex = RegexBuilder::new(r"rust")
         .case_insensitive(true)
         .build()

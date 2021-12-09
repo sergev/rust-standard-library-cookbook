@@ -1,5 +1,5 @@
-extern crate rand;
-use rand::SeedableRng;
+use rand::Rng;
+use rand_chacha::rand_core::SeedableRng;
 
 fn main() {
     // random_num1 will be any integer between
@@ -17,8 +17,6 @@ fn main() {
     // representable on most operating systems
     println!("random_char: {}", random_char);
 
-
-    use rand::Rng;
     // We can use a reusable generator
     let mut rng = rand::thread_rng();
     // This is equivalent to rand::random()

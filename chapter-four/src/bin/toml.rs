@@ -1,7 +1,4 @@
-#[macro_use]
-extern crate serde_derive;
-extern crate toml;
-
+use serde_derive::{Serialize, Deserialize};
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::fs::OpenOptions;
 

@@ -1,4 +1,3 @@
-extern crate slab;
 use slab::{Slab, VacantEntry};
 
 fn main() {
@@ -21,7 +20,7 @@ fn main() {
 
     // You can pass an "empty spot" around
     // in order to be filled
-    let data_key = { 
+    let data_key = {
         let entry = slab.vacant_entry();
         fill_some_data(entry)
     };

@@ -24,13 +24,13 @@ fn main() {
 
 
     // You can also configure only certain values
-    let custom_pizza = PizzaConfig {
+    let _custom_pizza = PizzaConfig {
         number_of_olives: 12,
         ..Default::default()
     };
 
     // You can define as many values as you want
-    let deluxe_custom_pizza = PizzaConfig {
+    let _deluxe_custom_pizza = PizzaConfig {
         number_of_olives: 12,
         wants_cheese: true,
         special_message: "Will you marry me?".to_string(),

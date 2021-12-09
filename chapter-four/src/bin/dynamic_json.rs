@@ -1,6 +1,4 @@
-#[macro_use]
-extern crate serde_json;
-
+use serde_json::json;
 use std::io::{self, BufRead};
 use std::collections::HashMap;
 

@@ -1,4 +1,3 @@
-extern crate walkdir;
 use walkdir::{DirEntry, WalkDir};
 
 fn main() {
