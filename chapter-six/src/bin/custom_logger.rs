@@ -79,14 +79,7 @@ enum FileLoggerError {
 
 type Result<T> = result::Result<T, FileLoggerError>;
 impl error::Error for FileLoggerError {
-    fn description(&self) -> &str {
-        match *self {
-            FileLoggerError::Io(ref err) => err.description(),
-            FileLoggerError::SetLogger(ref err) => err.description(),
-        }
-    }
-
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             FileLoggerError::Io(ref err) => Some(err),
             FileLoggerError::SetLogger(ref err) => Some(err),

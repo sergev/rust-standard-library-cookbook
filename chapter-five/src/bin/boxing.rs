@@ -62,7 +62,7 @@ fn main() {
         .unwrap()
         .0
         .add_child_nodes(Node::new(0), Node::new(1803));
-    println!("Our binary tree looks like this: {:?}", root);
+    println!("Our binary tree looks like this: {:#?}", root);
 
     // Polymorphism
     let mut zoo: Vec<Box<dyn Animal>> = Vec::new();

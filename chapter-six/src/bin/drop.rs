@@ -28,10 +28,10 @@ where
 }
 
 fn main() {
-    let a = CustomSmartPointer::new("A");
-    let b = CustomSmartPointer::new("B");
+    let _a = CustomSmartPointer::new("A");
+    let _b = CustomSmartPointer::new("B");
     let c = CustomSmartPointer::new("C");
-    let d = CustomSmartPointer::new("D");
+    let _d = CustomSmartPointer::new("D");
 
     // The next line would cause a compiler error,
     // as destructors cannot be explicitely called

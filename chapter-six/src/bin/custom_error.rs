@@ -14,17 +14,7 @@ enum AgeReaderError {
 type Result<T> = result::Result<T, AgeReaderError>;
 
 impl error::Error for AgeReaderError {
-    fn description(&self) -> &str {
-        // Defer to the existing description if possible
-        match *self {
-            AgeReaderError::Io(ref err) => err.description(),
-            AgeReaderError::Parse(ref err) => err.description(),
-            // Descriptions should be as short as possible
-            AgeReaderError::NegativeAge() => "Age is negative",
-        }
-    }
-
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         // Return the underlying error, if any
         match *self {
             AgeReaderError::Io(ref err) => Some(err),
