@@ -1,33 +1,25 @@
-#[macro_use]
-extern crate log;
-
-use log::{Level, Metadata, Record};
-use std::fs::{File, OpenOptions};
-use std::io::{self, BufWriter, Write};
-use std::{error, fmt, result};
-use std::sync::RwLock;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::io::Write;
 
 // This logger will write logs into a file on disk
 struct FileLogger {
-    level: Level,
-    writer: RwLock<BufWriter<File>>,
+    level: log::Level,
+    writer: std::sync::RwLock<std::io::BufWriter<std::fs::File>>,
 }
 
 impl log::Log for FileLogger {
-    fn enabled(&self, metadata: &Metadata) -> bool {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
         // Check if the logger is enabled for a certain log level
         // Here, you could also add own custom filtering based on targets or regex
         metadata.level() <= self.level
     }
 
-    fn log(&self, record: &Record) {
+    fn log(&self, record: &log::Record) {
         if self.enabled(record.metadata()) {
             let mut writer = self.writer
                 .write()
                 .expect("Failed to unlock log file writer in write mode");
-            let now = SystemTime::now();
-            let timestamp = now.duration_since(UNIX_EPOCH).expect(
+            let now = std::time::SystemTime::now();
+            let timestamp = now.duration_since(std::time::UNIX_EPOCH).expect(
                 "Failed to generate timestamp: This system is operating before the unix epoch",
             );
             // Write the log into the buffer
@@ -55,12 +47,12 @@ impl log::Log for FileLogger {
 
 impl FileLogger {
     // A convenience method to set everything up nicely
-    fn init(level: Level, file_name: &str) -> Result<()> {
-        let file = OpenOptions::new()
+    fn init(level: log::Level, file_name: &str) -> Result<()> {
+        let file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(file_name)?;
-        let writer = RwLock::new(BufWriter::new(file));
+        let writer = std::sync::RwLock::new(std::io::BufWriter::new(file));
         let logger = FileLogger { level, writer };
         // set the global level filter that log uses to optimize ignored logs
         log::set_max_level(level.to_level_filter());
@@ -73,13 +65,13 @@ impl FileLogger {
 // Our custom error for our FileLogger
 #[derive(Debug)]
 enum FileLoggerError {
-    Io(io::Error),
+    Io(std::io::Error),
     SetLogger(log::SetLoggerError),
 }
 
-type Result<T> = result::Result<T, FileLoggerError>;
-impl error::Error for FileLoggerError {
-    fn cause(&self) -> Option<&dyn error::Error> {
+type Result<T> = std::result::Result<T, FileLoggerError>;
+impl std::error::Error for FileLoggerError {
+    fn cause(&self) -> Option<&dyn std::error::Error> {
         match *self {
             FileLoggerError::Io(ref err) => Some(err),
             FileLoggerError::SetLogger(ref err) => Some(err),
@@ -87,8 +79,8 @@ impl error::Error for FileLoggerError {
     }
 }
 
-impl fmt::Display for FileLoggerError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl std::fmt::Display for FileLoggerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match *self {
             FileLoggerError::Io(ref err) => write!(f, "IO error: {}", err),
             FileLoggerError::SetLogger(ref err) => write!(f, "Parse error: {}", err),
@@ -96,8 +88,8 @@ impl fmt::Display for FileLoggerError {
     }
 }
 
-impl From<io::Error> for FileLoggerError {
-    fn from(err: io::Error) -> FileLoggerError {
+impl From<std::io::Error> for FileLoggerError {
+    fn from(err: std::io::Error) -> FileLoggerError {
         FileLoggerError::Io(err)
     }
 }
@@ -109,11 +101,11 @@ impl From<log::SetLoggerError> for FileLoggerError {
 }
 
 fn main() {
-    FileLogger::init(Level::Info, "log.txt").expect("Failed to init FileLogger");
-    trace!("Beginning the operation");
-    info!("A lightning strikes a body");
-    warn!("It's moving");
-    error!("It's alive!");
-    debug!("Dr. Frankenstein now knows how it feels to be god");
-    trace!("End of the operation");
+    FileLogger::init(log::Level::Info, "log.txt").expect("Failed to init FileLogger");
+    log::trace!("Beginning the operation");
+    log::info!("A lightning strikes a body");
+    log::warn!("It's moving");
+    log::error!("It's alive!");
+    log::debug!("Dr. Frankenstein now knows how it feels to be god");
+    log::trace!("End of the operation");
 }
