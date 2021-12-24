@@ -1,15 +1,13 @@
-use std::fmt::Debug;
-
 struct CustomSmartPointer<D>
 where
-    D: Debug,
+    D: std::fmt::Debug,
 {
     data: D,
 }
 
 impl<D> CustomSmartPointer<D>
 where
-    D: Debug,
+    D: std::fmt::Debug,
 {
     fn new(data: D) -> Self {
         CustomSmartPointer { data }
@@ -18,7 +16,7 @@ where
 
 impl<D> Drop for CustomSmartPointer<D>
 where
-    D: Debug,
+    D: std::fmt::Debug,
 {
     // This will automatically be called when a variable is dropped
     // It cannot be called manually
