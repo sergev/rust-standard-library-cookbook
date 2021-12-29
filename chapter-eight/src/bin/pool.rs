@@ -1,16 +1,14 @@
-extern crate futures;
-
 use futures::prelude::*;
-use futures::task::Context;
+use futures::task::{Context, Poll, SpawnExt, LocalSpawnExt};
 use futures::channel::oneshot;
-use futures::future::{FutureResult, lazy, ok};
-use futures::executor::{block_on, Executor, LocalPool, ThreadPoolBuilder};
+use futures::executor::{block_on, LocalPool, ThreadPool};
 
 use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
+use std::pin::Pin;
 
 #[derive(Clone, Copy, Debug)]
 enum Status {
@@ -36,23 +34,22 @@ impl Container {
     }
 
     // simulate ourselves retreiving a score from a remote database
-    fn pull_score(&mut self) -> FutureResult<u32, Never> {
+    fn pull_score(&mut self) -> u32 {
         self.status = Status::Loaded;
         thread::sleep(Duration::from_secs(self.ticks));
-        ok(100)
+        100
     }
 }
 
 impl Future for Container {
-    type Item = ();
-    type Error = Never;
+    type Output = ();
 
-    fn poll(&mut self, _cx: &mut Context) -> Poll<Self::Item, Self::Error> {
-        Ok(Async::Ready(()))
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
+        Poll::Ready(())
     }
 }
 
-const FINISHED: Result<(), Never> = Ok(());
+const FINISHED: () = ();
 
 fn new_status(unit: &'static str, status: Status) {
     println!("{}: new status: {:?}", unit, status);
@@ -63,26 +60,23 @@ fn local_until() {
 
     // setup our green thread pool
     let mut pool = LocalPool::new();
-    let mut exec = pool.executor();
 
-    // lazy will only execute the closure once the future has been polled
-    // we will simulate the poll by returning using the future::ok method
+    // create a new future
 
     // typically, we perform some heavy computational process within this closure
     // such as loading graphic assets, sound, other parts of our framework/library/etc.
-    let f = lazy(move |_| -> FutureResult<Container, Never> {
+    let f = async move {
         container.status = Status::FetchingData;
-        ok(container)
-    });
-
+        container
+    };
     println!("container's current status: {:?}", container.status);
 
-    container = pool.run_until(f, &mut exec).unwrap();
+    container = pool.run_until(f);
     new_status("local_until", container.status);
 
     // just to demonstrate a simulation of "fetching data over a network"
     println!("Fetching our container's score...");
-    let score = block_on(container.pull_score()).unwrap();
+    let score = block_on(async { container.pull_score() });
     println!("Our container's score is: {:?}", score);
 
     // see if our status has changed since we fetched our score
@@ -94,17 +88,17 @@ fn local_spawns_completed() {
     let mut container = Container::new("acme");
 
     let mut pool = LocalPool::new();
-    let mut exec = pool.executor();
+    let spawn = &mut pool.spawner();
 
     // change our container's status and then send it to our oneshot channel
-    exec.spawn_local(lazy(move |_| {
+    spawn.spawn_local(async move {
             container.status = Status::Loaded;
             tx.send(container).unwrap();
             FINISHED
-        }))
+        })
         .unwrap();
 
-    container = pool.run_until(rx, &mut exec).unwrap();
+    container = pool.run_until(rx).unwrap();
     new_status("local_spanws_completed", container.status);
 }
 
@@ -118,22 +112,23 @@ fn local_nested() {
     let cnt_2 = cnt.clone();
 
     let mut pool = LocalPool::new();
-    let mut exec = pool.executor();
-    let mut exec_2 = pool.executor();
+    let spawn = &mut pool.spawner();
+    let spawn_2 = spawn.clone();
 
-    let _ = exec.spawn_local(lazy(move |_| {
-        exec_2.spawn_local(lazy(move |_| {
-                let mut container = cnt_2.get();
-                container.status = Status::Loaded;
+    let _ = spawn.spawn_local(async move {
+            spawn_2.spawn_local(async move {
+                    let mut container = cnt_2.get();
+                    container.status = Status::Loaded;
 
-                cnt_2.set(container);
-                FINISHED
-            }))
-            .unwrap();
-        FINISHED
-    }));
+                    cnt_2.set(container);
+                    FINISHED
+                })
+                .unwrap();
+            FINISHED
+        })
+        .unwrap();
 
-    let _ = pool.run(&mut exec);
+    let _ = pool.run();
 
     container = cnt.get();
     new_status("local_nested", container.status);
@@ -144,24 +139,23 @@ fn thread_pool() {
     let tx_2 = tx.clone();
 
     // there are various thread builder options which are referenced at
-    // https://docs.rs/futures/0.2.0-beta/futures/executor/struct.ThreadPoolBuilder.html
-    let mut cpu_pool = ThreadPoolBuilder::new()
+    // https://docs.rs/futures/latest/futures/executor/struct.ThreadPool.html
+    let cpu_pool = ThreadPool::builder()
         .pool_size(2) // default is the number of cpus
-        .create();
+        .create()
+        .unwrap();
 
     // We need to box this part since we need the Send +'static trait
     // in order to safely send information across threads
-    let _ = cpu_pool.spawn(Box::new(lazy(move |_| {
+    let _ = cpu_pool.spawn(async move {
         tx.send(1).unwrap();
-        FINISHED
-    })));
+    })
+    .unwrap();
 
-    let f = lazy(move |_| {
+    let f = async move {
         tx_2.send(1).unwrap();
-        FINISHED
-    });
-
-    let _ = cpu_pool.run(f);
+    };
+    let _ = cpu_pool.spawn(f).unwrap();
 
     let cnt = rx.into_iter().count();
     println!("Count should be 2: {:?}", cnt);
