@@ -1,5 +1,3 @@
-extern crate rayon;
-
 #[derive(Debug)]
 struct Rectangle {
     height: u32,

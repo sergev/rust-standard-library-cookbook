@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock};
 use std::net::Ipv6Addr;
 use std::collections::HashMap;
 use std::{thread, time};
-use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 // Client holds whatever state your client might have
 struct Client {
@@ -27,7 +27,7 @@ impl ConnectionHandler {
     fn new() -> Self {
         ConnectionHandler {
             clients: RwLock::new(HashMap::new()),
-            next_id: ATOMIC_USIZE_INIT,
+            next_id: AtomicUsize::new(0),
         }
     }
 

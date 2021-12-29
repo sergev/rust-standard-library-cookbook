@@ -1,5 +1,3 @@
-extern crate rand;
-
 use rand::Rng;
 use std::thread;
 // mpsc stands for "Multi-producer, single-consumer"
@@ -34,7 +32,7 @@ fn main() {
     thread::spawn(move || {
         let mut rng = rand::thread_rng();
         loop {
-            let msg = match rng.gen_range(0, 5) {
+            let msg = match rng.gen_range(0..5) {
                 0 => "Hi",
                 1 => DISCONNECT,
                 2 => "Howdy there, cowboy",
