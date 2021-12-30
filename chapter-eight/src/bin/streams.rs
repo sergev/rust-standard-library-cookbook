@@ -1,12 +1,12 @@
-extern crate futures;
-
 use std::thread;
+use std::pin::Pin;
 
 use futures::prelude::*;
 use futures::executor::block_on;
 use futures::future::poll_fn;
-use futures::stream::{iter_ok, iter_result};
+use futures::stream;
 use futures::channel::mpsc;
+use futures::task::{Context, Poll};
 
 #[derive(Debug)]
 struct QuickStream {
@@ -15,46 +15,47 @@ struct QuickStream {
 
 impl Stream for QuickStream {
     type Item = usize;
-    type Error = Never;
 
-    fn poll_next(&mut self, _cx: &mut task::Context) -> Poll<Option<Self::Item>, Self::Error> {
+    fn poll_next(mut self: Pin<&mut QuickStream>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.ticks {
             ref mut ticks if *ticks > 0 => {
                 *ticks -= 1;
                 println!("Ticks left on QuickStream: {}", *ticks);
-                Ok(Async::Ready(Some(*ticks)))
+                Poll::Ready(Some(*ticks))
             }
             _ => {
                 println!("QuickStream is closing!");
-                Ok(Async::Ready(None))
+                Poll::Ready(None)
             }
         }
     }
 }
 
-const FINISHED: Result<Async<()>, Never> = Ok(Async::Ready(()));
+const FINISHED: Poll<()> = Poll::Ready(());
 
 fn quick_streams() {
     let mut quick_stream = QuickStream { ticks: 10 };
 
     // Collect the first poll() call
     block_on(poll_fn(|cx| {
-            let res = quick_stream.poll_next(cx).unwrap();
-            println!("Quick stream's value: {:?}", res);
-            FINISHED
-        }))
-        .unwrap();
+            let poll = quick_stream.poll_next_unpin(cx);
+            if let Poll::Ready(res) = poll {
+                println!("Quick stream's value: {:?}", res);
+            }
+            poll
+        }));
 
     // Collect the second poll() call
     block_on(poll_fn(|cx| {
-            let res = quick_stream.poll_next(cx).unwrap();
-            println!("Quick stream's next svalue: {:?}", res);
-            FINISHED
-        }))
-        .unwrap();
+            let poll = quick_stream.poll_next_unpin(cx);
+            if let Poll::Ready(res) = poll {
+                println!("Quick stream's value: {:?}", res);
+            }
+            poll
+        }));
 
     // And now we should be starting from 7 when collecting the rest of the stream
-    let result: Vec<_> = block_on(quick_stream.collect()).unwrap();
+    let result: Vec<_> = block_on(quick_stream.collect::<Vec<_>>());
     println!("quick_streams final result: {:?}", result);
 }
 
@@ -65,38 +66,38 @@ fn iterate_streams() {
     let stream_response2 = vec![Ok(5), Ok(7), Err(false), Ok(3)];
 
     // Useful for converting any of the `Iterator` traits into a `Stream` trait.
-    let ok_stream = iter_ok::<_, ()>(vec![1, 5, 23, 12]);
-    let ok_stream2 = iter_ok::<_, ()>(vec![7, 2, 14, 19]);
+    let ok_stream = stream::iter(vec![1, 5, 23, 12]);
+    let ok_stream2 = stream::iter(vec![7, 2, 14, 19]);
 
-    let mut result_stream = iter_result(stream_response);
-    let result_stream2 = iter_result(stream_response2);
+    let mut result_stream = stream::iter(stream_response);
+    let mut result_stream2 = stream::iter(stream_response2);
 
-    let ok_stream_response: Vec<_> = block_on(ok_stream.collect()).unwrap();
+    let ok_stream_response: Vec<_> = block_on(ok_stream.collect::<Vec<_>>());
     println!("ok_stream_response: {:?}", ok_stream_response);
 
     let mut count = 1;
     loop {
         match block_on(result_stream.borrow_mut().next()) {
-            Ok((res, _)) => {
+            Some(res) => {
                 match res {
-                    Some(r) => println!("iter_result_stream result #{}: {}", count, r),
-                    None => { break }
+                    Ok(r) => println!("iter_result_stream result #{}: {}", count, r),
+                    Err(err) => println!("iter_result_stream had an error #{}: {:?}", count, err),
                 }
             },
-            Err((err, _)) => println!("iter_result_stream had an error #{}: {:?}", count, err),
+            None => { break }
         }
         count += 1;
     }
 
     // Alternative way of iterating through an ok stream
-    let ok_res: Vec<_> = block_on(ok_stream2.collect()).unwrap();
+    let ok_res: Vec<_> = block_on(ok_stream2.collect::<Vec<_>>());
     for ok_val in ok_res.into_iter() {
         println!("ok_stream2 value: {}", ok_val);
     }
 
-    let (_, stream) = block_on(result_stream2.next()).unwrap();
-    let (_, stream) = block_on(stream.next()).unwrap();
-    let (err, _) = block_on(stream.next()).unwrap_err();
+    let result = block_on(result_stream2.next()).unwrap();
+    let result = block_on(result_stream2.next()).unwrap();
+    let err = block_on(result_stream2.next()).unwrap();
 
     println!("The error for our result_stream2 was: {:?}", err);
 
@@ -119,7 +120,7 @@ fn channel_threads() {
         }
     });
 
-    let result: Vec<_> = block_on(rx.collect()).unwrap();
+    let result: Vec<_> = block_on(rx.collect::<Vec<_>>());
     for (index, res) in result.into_iter().enumerate() {
         println!("Channel #{} result: {}", index, res);
     }
@@ -128,7 +129,7 @@ fn channel_threads() {
 }
 
 fn channel_error() {
-    let (mut tx, rx) = mpsc::channel(0);
+    let (mut tx, mut rx) = mpsc::channel(0);
 
     tx.try_send("hola").unwrap();
 
@@ -138,34 +139,31 @@ fn channel_error() {
         Err(err) => println!("Send failed! {:?}", err),
     }
 
-    let (result, rx) = block_on(rx.next()).ok().unwrap();
-    println!("The result of the channel transaction is: {}",
-             result.unwrap());
+    let result = block_on(rx.next()).unwrap();
+    println!("The result of the channel transaction is: {}", result);
 
     // Now we should be able send to the transaction since we poll'ed a result already
     tx.try_send("hasta la vista").unwrap();
     drop(tx);
 
-    let (result, rx) = block_on(rx.next()).ok().unwrap();
-    println!("The next result of the channel transaction is: {}",
-             result.unwrap());
+    let result = block_on(rx.next()).unwrap();
+    println!("The next result of the channel transaction is: {}", result);
 
     // Pulling more should result in None
-    let (result, _) = block_on(rx.next()).ok().unwrap();
-    println!("The last result of the channel transaction is: {:?}",
-             result);
+    let result = block_on(rx.next());
+    println!("The last result of the channel transaction is: {:?}", result);
 }
 
 fn channel_buffer() {
     let (mut tx, mut rx) = mpsc::channel::<i32>(0);
 
     let f = poll_fn(move |cx| {
-        if !tx.poll_ready(cx).unwrap().is_ready() {
+        if !tx.poll_ready(cx).is_ready() {
             panic!("transactions should be ready right away!");
         }
 
         tx.start_send(20).unwrap();
-        if tx.poll_ready(cx).unwrap().is_pending() {
+        if tx.poll_ready(cx).is_pending() {
             println!("transaction is pending...");
         }
 
@@ -176,45 +174,45 @@ fn channel_buffer() {
                       to being full...");
         }
 
-        let result = rx.poll_next(cx).unwrap();
+        let result = rx.poll_next_unpin(cx);
         println!("the first result is: {:?}", result);
         println!("is transaction ready? {:?}",
-                 tx.poll_ready(cx).unwrap().is_ready());
+                 tx.poll_ready(cx).is_ready());
 
         // We should now be able to send another message since we've pulled
         // the first message into a result/value/variable.
-        if !tx.poll_ready(cx).unwrap().is_ready() {
+        if !tx.poll_ready(cx).is_ready() {
             panic!("transaction should be ready!");
         }
 
         tx.start_send(22).unwrap();
-        let result = rx.poll_next(cx).unwrap();
+        let result = rx.poll_next_unpin(cx);
         println!("new result for transaction is: {:?}", result);
 
         FINISHED
     });
 
-    block_on(f).unwrap();
+    block_on(f);
 }
 
 fn channel_threads_blocking() {
-    let (tx, rx) = mpsc::channel::<i32>(0);
-    let (tx_2, rx_2) = mpsc::channel::<()>(2);
+    let (mut tx, mut rx) = mpsc::channel::<i32>(0);
+    let (tx_2, mut rx_2) = mpsc::channel::<()>(2);
 
     let t = thread::spawn(move || {
-        let tx_2 = tx_2.sink_map_err(|_| panic!());
-        let (a, b) = block_on(tx.send(10).join(tx_2.send(()))).unwrap();
+        let mut tx_2 = tx_2.sink_map_err(|_| panic!());
 
-        block_on(a.send(30).join(b.send(()))).unwrap();
+        let (_r1, _r2) = block_on(future::join(tx.send(10), tx_2.send(())));
+        let (_r1, _r2) = block_on(future::join(tx.send(30), tx_2.send(())));
     });
 
-    let (_, rx_2) = block_on(rx_2.next()).ok().unwrap();
-    let (result, rx) = block_on(rx.next()).ok().unwrap();
-    println!("The first number that we sent was: {}", result.unwrap());
+    block_on(rx_2.next()).unwrap();
+    let result = block_on(rx.next()).unwrap();
+    println!("The first number that we sent was: {}", result);
 
-    drop(block_on(rx_2.next()).ok().unwrap());
-    let (result, _) = block_on(rx.next()).ok().unwrap();
-    println!("The second number that we sent was: {}", result.unwrap());
+    drop(block_on(rx_2.next()));
+    let result = block_on(rx.next());
+    println!("The second number that we sent was: {:?}", result);
 
     t.join().unwrap();
 }
@@ -225,7 +223,7 @@ fn channel_unbounded() {
     let (tx, rx) = mpsc::unbounded::<i32>();
 
     let t = thread::spawn(move || {
-        let result: Vec<_> = block_on(rx.collect()).unwrap();
+        let result: Vec<_> = block_on(rx.collect::<Vec<_>>());
         for item in result.iter() {
             println!("channel_unbounded: results on rx: {:?}", item);
         }
@@ -243,7 +241,7 @@ fn channel_unbounded() {
 
     drop(tx);
 
-    t.join().ok().unwrap();
+    t.join().unwrap();
 }
 
 fn main() {
