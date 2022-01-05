@@ -1,18 +1,18 @@
-extern crate futures;
-
 use futures::prelude::*;
 use futures::future::poll_fn;
 use futures::executor::block_on;
-use futures::sink::flush;
-use futures::stream::iter_ok;
-use futures::task::{Waker, Context};
+use futures::sink::SinkExt;
+use futures::stream::iter;
+use futures::task::{Waker, Context, Poll};
 
 use std::mem;
+use std::pin::Pin;
+use std::convert::Infallible;
 
 fn vector_sinks() {
     let mut vector = Vec::new();
-    let result = vector.start_send(0);
-    let result2 = vector.start_send(7);
+    let result = Pin::new(&mut vector).start_send(0).unwrap();
+    let result2 = Pin::new(&mut vector).start_send(7).unwrap();
 
     println!("vector_sink: results of sending should both be Ok(()): {:?} and {:?}",
              result,
@@ -20,58 +20,64 @@ fn vector_sinks() {
     println!("The entire vector is now {:?}", vector);
 
     // Now we need to flush our vector sink.
-    let flush = flush(vector);
+    let flush = block_on(SinkExt::flush(&mut vector));
     println!("Our flush value: {:?}", flush);
-    println!("Our vector value: {:?}", flush.into_inner().unwrap());
+    println!("Our vector value: {:?}", flush.unwrap());
 
-    let vector = Vec::new();
-    let mut result = vector.send(2);
-    // safe to unwrap since we know that we have not flushed the sink yet
-    let result = result.get_mut().unwrap().send(4);
+    let mut vector = Vec::new();
+    {
+        let mut pinned_vector = Pin::new(&mut vector);
+        let _result = pinned_vector.send(2);
+        // safe to unwrap since we know that we have not flushed the sink yet
+        let result = pinned_vector.send(4);
 
-    println!("Result of send(): {:?}", result);
-    println!("Our vector after send(): {:?}", result.get_ref().unwrap());
+        println!("Result of send(): {:?}", result);
 
-    let vector = block_on(result).unwrap();
+        // TODO: Cannot print vector here, as it's being borrowed.
+        // TODO: println!("Our vector after send(): {:?}", vector);
+
+        block_on(result).unwrap();
+    }
     println!("Our vector should already have one element: {:?}", vector);
 
-    let result = block_on(vector.send(2)).unwrap();
+    let _result = block_on(Pin::new(&mut vector).send(2)).unwrap();
     println!("We can still send to our stick to ammend values: {:?}",
-             result);
+             vector);
 
-    let vector = Vec::new();
-    let send_all = vector.send_all(iter_ok(vec![1, 2, 3]));
+    let mut vector = Vec::new();
+    let mut stream = stream::iter(vec![1, 2, 3]).map(Ok);
+    let send_all = vector.send_all(&mut stream);
     println!("The value of vector's send_all: {:?}", send_all);
 
     // Add some more elements to our vector...
-    let (vector, _) = block_on(send_all).unwrap();
-    let (result, _) = block_on(vector.send_all(iter_ok(vec![0, 6, 7]))).unwrap();
+    block_on(send_all).unwrap();
+    let result = block_on(vector.send_all(&mut stream::iter(vec![0, 6, 7]).map(Ok))).unwrap();
     println!("send_all's return value: {:?}", result);
 }
 
 fn mapping_sinks() {
-    let sink = Vec::new().with(|elem: i32| Ok::<i32, Never>(elem * elem));
+    let mut sink = Vec::new().with(|elem: i32| future::ok::<i32, Infallible>(elem * elem));
 
-    let sink = block_on(sink.send(0)).unwrap();
-    let sink = block_on(sink.send(3)).unwrap();
-    let sink = block_on(sink.send(5)).unwrap();
+    block_on(sink.send(0)).unwrap();
+    block_on(sink.send(3)).unwrap();
+    block_on(sink.send(5)).unwrap();
     println!("sink with() value: {:?}", sink.into_inner());
 
-    let sink = Vec::new().with_flat_map(|elem| iter_ok(vec![elem; elem].into_iter().map(|y| y * y)));
+    let mut sink = Vec::new().with_flat_map(|elem| stream::iter(vec![elem; elem]).map(Ok));
 
-    let sink = block_on(sink.send(0)).unwrap();
-    let sink = block_on(sink.send(3)).unwrap();
-    let sink = block_on(sink.send(5)).unwrap();
-    let sink = block_on(sink.send(7)).unwrap();
+    block_on(sink.send(0)).unwrap();
+    block_on(sink.send(3)).unwrap();
+    block_on(sink.send(5)).unwrap();
+    block_on(sink.send(7)).unwrap();
     println!("sink with_flat_map() value: {:?}", sink.into_inner());
 }
 
 fn fanout() {
     let sink1 = vec![];
     let sink2 = vec![];
-    let sink = sink1.fanout(sink2);
-    let stream = iter_ok(vec![1, 2, 3]);
-    let (sink, _) = block_on(sink.send_all(stream)).unwrap();
+    let mut sink = sink1.fanout(sink2);
+    let mut stream = iter(vec![1, 2, 3]).map(Ok);
+    block_on(sink.send_all(&mut stream)).unwrap();
     let (sink1, sink2) = sink.into_inner();
 
     println!("sink1 values: {:?}", sink1);
@@ -84,35 +90,29 @@ struct ManualSink<T> {
     waiting_tasks: Vec<Waker>,
 }
 
-impl<T> Sink for ManualSink<T> {
-    type SinkItem = Option<T>; // Pass None to flush
-    type SinkError = ();
+impl<T: Unpin> Sink<T> for ManualSink<T> {
+    type Error = ();
 
-    fn start_send(&mut self, op: Option<T>) -> Result<(), Self::SinkError> {
-        if let Some(item) = op {
-            self.data.push(item);
-        } else {
-            self.force_flush();
-        }
-
+    fn start_send(mut self: Pin<&mut Self>, item: T) -> Result<(), Self::Error> {
+        self.data.push(item);
         Ok(())
     }
 
-    fn poll_ready(&mut self, _cx: &mut Context) -> Poll<(), ()> {
-        Ok(Async::Ready(()))
+    fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
     }
 
-    fn poll_flush(&mut self, cx: &mut Context) -> Poll<(), ()> {
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
         if self.data.is_empty() {
-            Ok(Async::Ready(()))
+            Poll::Ready(Ok(()))
         } else {
             self.waiting_tasks.push(cx.waker().clone());
-            Ok(Async::Pending)
+            Poll::Pending
         }
     }
 
-    fn poll_close(&mut self, _cx: &mut Context) -> Poll<(), ()> {
-        Ok(().into())
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
     }
 }
 
@@ -135,23 +135,23 @@ impl<T> ManualSink<T> {
 }
 
 fn manual_flush() {
-    let mut sink = ManualSink::new().with(|x| Ok::<Option<i32>, ()>(x));
-    let _ = sink.get_mut().start_send(Some(3));
-    let _ = sink.get_mut().start_send(Some(7));
+    let mut sink = ManualSink::new().with(|x| future::ok::<i32, ()>(x));
+    sink.start_send_unpin(3).unwrap();
 
-    let f = poll_fn(move |cx| -> Poll<Option<_>, Never> {
+    let f = poll_fn(move |cx| {
         // Try to flush our ManualSink
-        let _ = sink.get_mut().poll_flush(cx);
-        let _ = flush(sink.get_mut());
-
+        let _ = sink.poll_flush_unpin(cx);
         println!("Our sink after trying to flush: {:?}", sink.get_ref());
+
+        sink.start_send_unpin(7).unwrap();
+        let _ = sink.poll_flush_unpin(cx);
 
         let results = sink.get_mut().force_flush();
         println!("Sink data after manually flushing: {:?}",
                  sink.get_ref().data);
         println!("Final results of sink: {:?}", results);
 
-        Ok(Async::Ready(Some(())))
+        Poll::Ready(Some(()))
     });
 
     block_on(f).unwrap();
