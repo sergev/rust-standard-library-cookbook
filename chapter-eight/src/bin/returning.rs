@@ -1,8 +1,8 @@
-extern crate futures;
-
 use futures::executor::block_on;
-use futures::future::{join_all, Future, FutureResult, ok};
-use futures::prelude::*;
+use futures::future::{self, Future, FutureExt, TryFutureExt};
+use futures::task::{Context, Poll};
+
+use std::pin::Pin;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum PlayerStatus {
@@ -35,9 +35,10 @@ impl Player {
         }
     }
 
-    fn set_status(&mut self, status: PlayerStatus) -> FutureResult<&mut Self, Never> {
+    fn set_status(&mut self, status: PlayerStatus)
+                  -> future::Ready<Result<&mut Self, ()>> {
         self.status = status;
-        ok(self)
+        future::ready(Ok(self))
     }
 
     fn can_add_points(&mut self) -> bool {
@@ -49,9 +50,9 @@ impl Player {
         return false;
     }
 
-    fn add_points(&mut self, points: u32) -> Async<&mut Self> {
+    fn add_points(&mut self, points: u32) -> Poll<&mut Self> {
         if !self.can_add_points() {
-            Async::Ready(self)
+            Poll::Ready(self)
         } else {
             let new_score = self.score + points;
             // Here we would send the new score to a remote server
@@ -59,16 +60,15 @@ impl Player {
 
             self.score = new_score;
 
-            Async::Ready(self)
+            Poll::Ready(self)
         }
     }
 }
 
 impl Future for Player {
-    type Item = Player;
-    type Error = ();
+    type Output = Result<Self, ()>;
 
-    fn poll(&mut self, cx: &mut task::Context) -> Poll<Self::Item, Self::Error> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         // Presuming we fetch our player's score from a
         // server upon initial load.
         // After we perform the fetch send the Result<Async> value.
@@ -77,18 +77,18 @@ impl Future for Player {
 
         if self.ticks == 0 {
             self.status = PlayerStatus::Default;
-            Ok(Async::Ready(*self))
+            Poll::Ready(Ok(*self))
         } else {
             self.ticks -= 1;
-            cx.waker().wake();
-            Ok(Async::Pending)
+            cx.waker().wake_by_ref();
+            Poll::Pending
         }
     }
 }
 
 fn async_add_points(player: &mut Player,
                     points: u32)
-                    -> Box<Future<Item = Player, Error = Never> + Send> {
+                    -> future::Ready<Result<Player, ()>> {
     // Presuming that player.add_points() will send the points to a
     // database/server over a network and returns an updated
     // player score from the server/database.
@@ -97,7 +97,7 @@ fn async_add_points(player: &mut Player,
     // Additionally, we may want to add logging mechanisms,
     // friend notifications, etc. here.
 
-    return Box::new(ok(*player));
+    return future::ready(Ok(*player));
 }
 
 fn display_scoreboard(players: Vec<&Player>) {
@@ -110,22 +110,22 @@ fn main() {
     let mut player1 = Player::new("Bob");
     let mut player2 = Player::new("Alice");
 
-    let tasks = join_all(vec![player1, player2]);
+    let tasks = future::join_all(vec![player1, player2]);
 
-    let f = join_all(vec![
+    let f = future::join_all(vec![
         async_add_points(&mut player1, 5),
         async_add_points(&mut player2, 2),
     ])
         .then(|x| {
             println!("First batch of adding points is done.");
-            x
+            future::ready(x)
         });
 
-    block_on(f).unwrap();
+    block_on(f);
 
-    let players = block_on(tasks).unwrap();
-    player1 = players[0];
-    player2 = players[1];
+    let players = block_on(tasks);
+    player1 = players[0].unwrap();
+    player2 = players[1].unwrap();
 
     println!("Scores should be zero since no players were loaded");
     display_scoreboard(vec![&player1, &player2]);
@@ -140,13 +140,12 @@ fn main() {
                 println!("Finished trying to give Player 1 points.");
                 async_add_points(&mut new_player2, 2)
             })
-            .then(move |new_player2| {
+            .and_then(move |new_player2| {
                 println!("Finished trying to give Player 2 points.");
                 println!("Player 1 (Bob) should have a score of 10 and Player 2 (Alice) should \
                           have a score of 0");
 
-                // unwrap is used here to since
-                display_scoreboard(vec![&player1, &new_player2.unwrap()]);
+                display_scoreboard(vec![&player1, &new_player2]);
                 new_player2
             })
     });

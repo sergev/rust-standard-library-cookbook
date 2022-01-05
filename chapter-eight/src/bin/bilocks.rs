@@ -1,6 +1,3 @@
-extern crate futures;
-extern crate futures_util;
-
 use futures::prelude::*;
 use futures::executor::LocalPool;
 use futures::task::{Context, LocalMap, Wake, Waker};

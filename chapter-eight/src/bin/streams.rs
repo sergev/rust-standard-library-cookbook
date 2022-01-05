@@ -95,8 +95,8 @@ fn iterate_streams() {
         println!("ok_stream2 value: {}", ok_val);
     }
 
-    let result = block_on(result_stream2.next()).unwrap();
-    let result = block_on(result_stream2.next()).unwrap();
+    let _ = block_on(result_stream2.next()).unwrap();
+    let _ = block_on(result_stream2.next()).unwrap();
     let err = block_on(result_stream2.next()).unwrap();
 
     println!("The error for our result_stream2 was: {:?}", err);
