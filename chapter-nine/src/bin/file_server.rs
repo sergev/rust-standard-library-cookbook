@@ -1,6 +1,3 @@
-extern crate futures;
-extern crate hyper;
-
 use hyper::{Method, StatusCode};
 use hyper::server::{const_service, service_fn, Http, Request, Response};
 use hyper::header::{ContentLength, ContentType};
@@ -33,7 +30,7 @@ fn run_file_server(addr: &SocketAddr) -> Result<(), hyper::Error> {
 
 // Because we don't want the entire server to block when serving a file,
 // we are going to return a response wrapped in a future
-type ResponseFuture = Box<Future<Item = Response, Error = hyper::Error>>;
+type ResponseFuture = Box<dyn Future<Item = Response, Error = hyper::Error>>;
 fn handle_root() -> ResponseFuture {
     // Send the landing page
     send_file_or_404("index.html")
@@ -68,7 +65,7 @@ fn send_file_or_404(path: &str) -> ResponseFuture {
 
 // Return a requested file in a future of Result<Response, io::Error>
 // to indicate whether it exists or not
-type ResponseResultFuture = Box<Future<Item = Result<Response, io::Error>, Error = hyper::Error>>;
+type ResponseResultFuture = Box<dyn Future<Item = Result<Response, io::Error>, Error = hyper::Error>>;
 fn try_to_send_file(file: &str) -> ResponseResultFuture {
     // Prepend "files/" to the file
     let path = path_on_disk(file);
@@ -132,7 +129,7 @@ fn sanitize_path(path: &str) -> String {
     path.replace("\\", "/")
         // Prevent the user from going up the filesystem
         .replace("../", "")
-        // If the path comes straigh from the router, 
+        // If the path comes straigh from the router,
         // it will begin with a slash
         .trim_left_matches(|c| c == '/')
         // Remove slashes at the end as we only serve files

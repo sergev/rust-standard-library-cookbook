@@ -1,7 +1,4 @@
-extern crate reqwest;
-#[macro_use]
-extern crate serde_derive;
-
+use serde_derive::{Serialize, Deserialize};
 use std::fmt;
 
 #[derive(Serialize, Deserialize, Debug)]
