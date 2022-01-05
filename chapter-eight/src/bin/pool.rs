@@ -69,7 +69,7 @@ fn local_until() {
         container.status = Status::FetchingData;
         container
     };
-    println!("container's current status: {:?}", container.status);
+    println!("container's '{}' current status: {:?}", container.name, container.status);
 
     container = pool.run_until(f);
     new_status("local_until", container.status);

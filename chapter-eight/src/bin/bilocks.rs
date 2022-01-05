@@ -1,13 +1,14 @@
-use futures::prelude::*;
-use futures::executor::LocalPool;
-use futures::task::{Context, LocalMap, Wake, Waker};
-use futures_util::lock::BiLock;
+use futures::task::{Context, Poll, Waker};
+use futures::lock::BiLock;
+use futures::Future;
 
 use std::sync::Arc;
+use std::task::Wake;
+use std::pin::Pin;
 
 struct FakeWaker;
 impl Wake for FakeWaker {
-    fn wake(_: &Arc<Self>) {}
+    fn wake(self: Arc<Self>) {}
 }
 
 struct Reader<T> {
@@ -24,11 +25,8 @@ fn split() -> (Reader<u32>, Writer<u32>) {
 }
 
 fn main() {
-    let pool = LocalPool::new();
-    let mut exec = pool.executor();
     let waker = Waker::from(Arc::new(FakeWaker));
-    let mut map = LocalMap::new();
-    let mut cx = Context::new(&mut map, &waker, &mut exec);
+    let mut cx = Context::from_waker(&waker);
 
     let (reader, writer) = split();
     println!("Lock should be ready for writer: {}",
@@ -36,8 +34,8 @@ fn main() {
     println!("Lock should be ready for reader: {}",
              reader.lock.poll_lock(&mut cx).is_ready());
 
-    let mut writer_lock = match writer.lock.lock().poll(&mut cx).unwrap() {
-        Async::Ready(t) => t,
+    let mut writer_lock = match Pin::new(&mut writer.lock.lock()).poll(&mut cx) {
+        Poll::Ready(t) => t,
         _ => panic!("We should be able to lock with writer"),
     };
 
@@ -46,24 +44,24 @@ fn main() {
     *writer_lock = 123;
 
     let mut lock = reader.lock.lock();
-    match lock.poll(&mut cx).unwrap() {
-        Async::Ready(_) => {
+    match Pin::new(&mut lock).poll(&mut cx) {
+        Poll::Ready(_) => {
             panic!("The lock should not be lockable since writer has already locked it!")
         }
         _ => println!("Couldn't lock with reader since writer has already initiated the lock"),
     };
 
-    let writer = writer_lock.unlock();
+    drop(writer_lock);
 
-    let reader_lock = match lock.poll(&mut cx).unwrap() {
-        Async::Ready(t) => t,
+    let reader_lock = match Pin::new(&mut lock).poll(&mut cx) {
+        Poll::Ready(t) => t,
         _ => panic!("We should be able to lock with reader"),
     };
 
     println!("The new value for the lock is: {}", *reader_lock);
 
-    let reader = reader_lock.unlock();
-    let reunited_value = reader.reunite(writer).unwrap();
+    drop(reader_lock);
+    let reunited_value = reader.lock.reunite(writer.lock).unwrap();
 
     println!("After reuniting our locks, the final value is still: {}",
              reunited_value);

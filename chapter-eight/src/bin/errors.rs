@@ -44,9 +44,8 @@ impl Future for FuturePanic {
 }
 
 fn using_recover() {
+    let _f = MyFuture::new();
 /*
-    let f = MyFuture::new();
-
     // TODO: recover() method is not available for Future anymore
     let f_recover = f.recover::<_>(|err| {
         println!("An error has occurred: {}", err);
