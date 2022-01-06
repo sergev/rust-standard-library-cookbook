@@ -1,127 +1,120 @@
-use hyper::{Method, StatusCode};
-use hyper::server::{const_service, service_fn, Http, Request, Response};
-use hyper::header::{ContentLength, ContentType};
-use hyper::mime;
-use futures::Future;
-use futures::sync::oneshot;
-use std::net::SocketAddr;
-use std::thread;
-use std::fs::File;
-use std::io::{self, copy};
+use hyper::service::{make_service_fn, service_fn};
+use std::io;
+use tokio;
+use tokio_util::codec::{BytesCodec, FramedRead};
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), hyper::Error> {
     let addr = "[::1]:3000".parse().expect("Failed to parse address");
-    run_file_server(&addr).expect("Failed to run web server");
+    let file_service = make_service_fn(|_| async {
+        Ok::<_, hyper::Error>(service_fn(run_file_server))
+    });
+    let server = hyper::Server::bind(&addr).serve(file_service);
+    server.await
 }
 
-fn run_file_server(addr: &SocketAddr) -> Result<(), hyper::Error> {
-    let file_service = const_service(service_fn(|req: Request| {
-        // Setting up our routes
-        match (req.method(), req.path()) {
-            (&Method::Get, "/") => handle_root(),
-            (&Method::Get, path) => handle_get_file(path),
-            _ => handle_invalid_method(),
-        }
-    }));
-
-    let server = Http::new().bind(addr, file_service)?;
-    server.run()
+async fn run_file_server(req: hyper::Request<hyper::Body>) -> Result<hyper::Response<hyper::Body>, io::Error> {
+    // Setting up our routes
+    match (req.method(), req.uri().path()) {
+        (&hyper::Method::GET, "/") => handle_root().await,
+        (&hyper::Method::GET, path) => handle_get_file(path).await,
+        _ => handle_invalid_method().await,
+    }
 }
 
 // Because we don't want the entire server to block when serving a file,
 // we are going to return a response wrapped in a future
-type ResponseFuture = Box<dyn Future<Item = Response, Error = hyper::Error>>;
-fn handle_root() -> ResponseFuture {
+type ResponseResult = Result<hyper::Response<hyper::Body>, io::Error>;
+async fn handle_root() -> ResponseResult {
     // Send the landing page
-    send_file_or_404("index.html")
+    send_file_or_404("index.html").await
 }
 
-fn handle_get_file(file: &str) -> ResponseFuture {
+async fn handle_get_file(file: &str) -> ResponseResult {
     // Send whatever page was requested or fall back to a 404 page
-    send_file_or_404(file)
+    send_file_or_404(file).await
 }
 
-fn handle_invalid_method() -> ResponseFuture {
+async fn handle_invalid_method() -> ResponseResult {
     // Send a page telling the user that the method he used is not supported
-    let response_future = send_file_or_404("invalid_method.html")
+    send_file_or_404("invalid_method.html").await
         // Set the correct status code
-        .and_then(|response| Ok(response.with_status(StatusCode::MethodNotAllowed)));
-    Box::new(response_future)
+        .or_else(|_| Ok(method_not_allowed()))
 }
 
 // Send a future containing a response with the requested file or a 404 page
-fn send_file_or_404(path: &str) -> ResponseFuture {
+async fn send_file_or_404(path: &str) -> ResponseResult {
     // Sanitize the input to prevent unwanted data access
     let path = sanitize_path(path);
 
     let response_future = try_to_send_file(&path)
         // try_to_send_file returns a future of Result<Response, io::Error>
         // turn it into a future of a future of Response with an error of hyper::Error
-        .and_then(|response_result| response_result.map_err(|error| error.into()))
+//TODO
+//        .and_then(|response_result| response_result.map_err(|error| error.into()))
         // If something went wrong, send the 404 page instead
-        .or_else(|_| send_404());
-    Box::new(response_future)
+//        .or_else(|_| send_404())
+        ;
+    response_future.await
+}
+
+/// HTTP status code 404
+fn not_found() -> hyper::Response<hyper::Body> {
+    const NOTFOUND: &[u8] = b"Not Found";
+    hyper::Response::builder()
+        .status(hyper::StatusCode::NOT_FOUND)
+        .body(NOTFOUND.into())
+        .unwrap()
+}
+
+fn method_not_allowed() -> hyper::Response<hyper::Body> {
+    const NOTALLOWED: &[u8] = b"Method not allowed";
+    hyper::Response::builder()
+        .status(hyper::StatusCode::METHOD_NOT_ALLOWED)
+        .body(NOTALLOWED.into())
+        .unwrap()
 }
 
 // Return a requested file in a future of Result<Response, io::Error>
 // to indicate whether it exists or not
-type ResponseResultFuture = Box<dyn Future<Item = Result<Response, io::Error>, Error = hyper::Error>>;
-fn try_to_send_file(file: &str) -> ResponseResultFuture {
+async fn try_to_send_file(filename: &str) -> ResponseResult {
     // Prepend "files/" to the file
-    let path = path_on_disk(file);
-    // Load the file in a separate thread into memory.
-    // As soon as it's done, send it back through a channel
-    let (tx, rx) = oneshot::channel();
-    thread::spawn(move || {
-        let mut file = match File::open(&path) {
-            Ok(file) => file,
-            Err(err) => {
-                println!("Failed to find file: {}", path);
-                // Send error through channel
-                tx.send(Err(err)).expect("Send error on file not found");
-                return;
-            }
-        };
+    let path = path_on_disk(filename);
 
-        // buf is our in-memory representation of the file
-        let mut buf: Vec<u8> = Vec::new();
-        match copy(&mut file, &mut buf) {
-            Ok(_) => {
-                println!("Sending file: {}", path);
-                // Detect the content type by checking the file extension
-                // or fall back to plaintext
-                let content_type = get_content_type(&path).unwrap_or_else(ContentType::plaintext);
-                let res = Response::new()
-                    .with_header(ContentLength(buf.len() as u64))
-                    .with_header(content_type)
-                    .with_body(buf);
-                // Send file through channel
-                tx.send(Ok(res))
-                    .expect("Send error on successful file read");
-            }
-            Err(err) => {
-                // Send error through channel
-                tx.send(Err(err)).expect("Send error on error reading file");
-            }
-        };
-    });
-    // Convert all encountered errors to hyper::Error
-    Box::new(rx.map_err(|error| io::Error::new(io::ErrorKind::Other, error).into()))
+    if let Ok(file) = tokio::fs::File::open(path).await {
+        println!("Sending file: {}", filename);
+        let stream = FramedRead::new(file, BytesCodec::new());
+        let body = hyper::Body::wrap_stream(stream);
+        // Detect the content type by checking the file extension
+        // or fall back to plaintext
+        let content_type = get_content_type(&filename).unwrap_or("text/plain; charset=utf-8".to_string());
+        let response = hyper::Response::builder()
+            .header(hyper::header::CONTENT_TYPE, content_type)
+            .body(body)
+            .unwrap();
+        return Ok(response);
+    }
+
+    println!("Failed to find file: {}", filename);
+    Ok(not_found())
 }
 
-fn send_404() -> ResponseFuture {
+async fn send_404() -> ResponseResult {
     // Try to send our 404 page
-    let response_future = try_to_send_file("not_found.html").and_then(|response_result| {
-        Ok(response_result.unwrap_or_else(|_| {
-            // If the 404 page doesn't exist, sent fallback text instead
-            const ERROR_MSG: &str = "Failed to find \"File not found\" page. How ironic\n";
-            Response::new()
-                .with_status(StatusCode::NotFound)
-                .with_header(ContentLength(ERROR_MSG.len() as u64))
-                .with_body(ERROR_MSG)
-        }))
-    });
-    Box::new(response_future)
+    let response_future = try_to_send_file("not_found.html")
+//TODO
+//        .and_then(|response_result| {
+//            Ok(response_result.unwrap_or(
+//                // If the 404 page doesn't exist, sent fallback text instead
+//                const ERROR_MSG: &str = "Failed to find \"File not found\" page. How ironic\n";
+//                hyper::Response::builder()
+//                    .status(hyper::StatusCode::NOT_FOUND)
+//                    .body(ERROR_MSG.into())
+//                    .unwrap()
+//            ))
+//        })
+        ;
+    response_future.await
 }
 
 fn sanitize_path(path: &str) -> String {
@@ -131,9 +124,9 @@ fn sanitize_path(path: &str) -> String {
         .replace("../", "")
         // If the path comes straigh from the router,
         // it will begin with a slash
-        .trim_left_matches(|c| c == '/')
+        .trim_start_matches(|c| c == '/')
         // Remove slashes at the end as we only serve files
-        .trim_right_matches(|c| c == '/')
+        .trim_end_matches(|c| c == '/')
         .to_string()
 }
 
@@ -141,15 +134,15 @@ fn path_on_disk(path_to_file: &str) -> String {
     "files/".to_string() + path_to_file
 }
 
-fn get_content_type(file: &str) -> Option<ContentType> {
+fn get_content_type(file: &str) -> Option<String> {
     // Check the file extension and return the respective MIME type
     let pos = file.rfind('.')? + 1;
     let mime_type = match &file[pos..] {
-        "txt" => mime::TEXT_PLAIN_UTF_8,
-        "html" => mime::TEXT_HTML_UTF_8,
-        "css" => mime::TEXT_CSS,
+        "txt" => "text/plain; charset=utf-8",
+        "html" => "text/html; charset=utf-8",
+        "css" => "text/css",
         // This list can be extended for all types your server should support
         _ => return None,
     };
-    Some(ContentType(mime_type))
+    Some(String::from(mime_type))
 }
