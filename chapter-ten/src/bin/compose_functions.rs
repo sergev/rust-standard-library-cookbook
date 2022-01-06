@@ -1,5 +1,3 @@
-#![feature(conservative_impl_trait)]
-
 // The compose! macro takes a variadic amount of closures and returns
 // a closure that applies them all one after another
 macro_rules! compose {

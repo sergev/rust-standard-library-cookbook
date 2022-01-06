@@ -1,5 +1,3 @@
-#![feature(iterator_step_by)]
-
 fn main() {
     // step_by() will start on the first element of an iterator,
     // but then skips a certain number of elements on every iteration

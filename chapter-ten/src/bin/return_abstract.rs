@@ -1,5 +1,3 @@
-#![feature(conservative_impl_trait)]
-
 trait Animal {
     fn do_sound(&self);
 }

@@ -1,4 +1,5 @@
-#![feature(generators, generator_trait, conservative_impl_trait)]
+#![feature(generators, generator_trait)]
+use std::pin::Pin;
 
 fn main() {
     // A closure that uses the keyword "yield" is called a generator
@@ -8,15 +9,15 @@ fn main() {
         yield 1;
         yield 2;
     };
-    if let GeneratorState::Yielded(value) = generator.resume() {
+    if let GeneratorState::Yielded(value) = Pin::new(&mut generator).resume(()) {
         println!("The generator yielded: {}", value);
     }
-    if let GeneratorState::Yielded(value) = generator.resume() {
+    if let GeneratorState::Yielded(value) = Pin::new(&mut generator).resume(()) {
         println!("The generator yielded: {}", value);
     }
     // When there is nothing left to yield,
     // a generator will automatically return an empty tuple
-    if let GeneratorState::Complete(value) = generator.resume() {
+    if let GeneratorState::Complete(value) = Pin::new(&mut generator).resume(()) {
         println!("The generator completed with: {:?}", value);
     }
 
@@ -29,7 +30,7 @@ fn main() {
         "I'm a string"
     };
     loop {
-        match generator.resume() {
+        match Pin::new(&mut generator).resume(()) {
             GeneratorState::Yielded(value) => println!("The generator yielded: {}", value),
             GeneratorState::Complete(value) => {
                 println!("The generator completed with: {}", value);
@@ -50,11 +51,11 @@ use std::ops::{Generator, GeneratorState};
 struct GeneratorIterator<T>(T);
 impl<T> Iterator for GeneratorIterator<T>
 where
-    T: Generator<Return = ()>,
+    T: Generator<Return = ()> + std::marker::Unpin,
 {
     type Item = T::Yield;
     fn next(&mut self) -> Option<Self::Item> {
-        match self.0.resume() {
+        match Pin::new(&mut self.0).resume(()) {
             GeneratorState::Yielded(value) => Some(value),
             GeneratorState::Complete(_) => None,
         }

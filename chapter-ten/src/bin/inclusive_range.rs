@@ -1,5 +1,3 @@
-#![feature(inclusive_range_syntax)]
-
 fn main() {
     // Retrieve the entire alphabet in lower and uppercase:
     let alphabet: Vec<_> = (b'A' .. b'z' + 1) // Start as u8

@@ -1,5 +1,3 @@
-#![feature(string_retain)]
-
 fn main() {
     let mut some_text = "H_el_l__o_ ___Wo_r__l_d_".to_string();
     println!("Original text: {}", some_text);
