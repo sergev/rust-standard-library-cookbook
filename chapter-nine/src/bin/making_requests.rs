@@ -1,5 +1,6 @@
 use serde_derive::{Serialize, Deserialize};
 use std::fmt;
+use tokio;
 
 #[derive(Serialize, Deserialize, Debug)]
 // The JSON returned by the web service that hands posts out
@@ -57,33 +58,34 @@ impl PostCrud {
         }
     }
 
-    fn create(&self, post: &NewPost) -> Result<Post, reqwest::Error> {
-        let response = self.client.post(&self.endpoint).json(post).send()?.json()?;
+    async fn create(&self, post: &NewPost) -> Result<Post, reqwest::Error> {
+        let response = self.client.post(&self.endpoint).json(post).send().await?.json().await?;
         Ok(response)
     }
 
-    fn read(&self, id: u32) -> Result<Post, reqwest::Error> {
+    async fn read(&self, id: u32) -> Result<Post, reqwest::Error> {
         let url = format!("{}/{}", self.endpoint, id);
-        let response = self.client.get(&url).send()?.json()?;
+        let response = self.client.get(&url).send().await?.json().await?;
         Ok(response)
     }
 
-    fn update(&self, id: u32, post: &UpdatedPost) -> Result<Post, reqwest::Error> {
+    async fn update(&self, id: u32, post: &UpdatedPost) -> Result<Post, reqwest::Error> {
         let url = format!("{}/{}", self.endpoint, id);
-        let response = self.client.patch(&url).json(post).send()?.json()?;
+        let response = self.client.patch(&url).json(post).send().await?.json().await?;
         Ok(response)
     }
 
-    fn delete(&self, id: u32) -> Result<(), reqwest::Error> {
+    async fn delete(&self, id: u32) -> Result<(), reqwest::Error> {
         let url = format!("{}/{}", self.endpoint, id);
-        self.client.delete(&url).send()?;
+        self.client.delete(&url).send().await?;
         Ok(())
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let post_crud = PostCrud::new();
-    let post = post_crud.read(1).expect("Failed to read post");
+    let post = post_crud.read(1).await.expect("Failed to read post");
     println!("Read a post:\n{}", post);
 
     let new_post = NewPost {
@@ -91,7 +93,7 @@ fn main() {
         title: "Hello World!".to_string(),
         body: "This is a new post, sent to a fake JSON API server.\n".to_string(),
     };
-    let post = post_crud.create(&new_post).expect("Failed to create post");
+    let post = post_crud.create(&new_post).await.expect("Failed to create post");
     println!("Created a post:\n{}", post);
 
     let updated_post = UpdatedPost {
@@ -101,8 +103,9 @@ fn main() {
     };
     let post = post_crud
         .update(4, &updated_post)
+        .await
         .expect("Failed to update post");
     println!("Updated a post:\n{}", post);
 
-    post_crud.delete(51).expect("Failed to delete post");
+    post_crud.delete(51).await.expect("Failed to delete post");
 }
