@@ -1,44 +1,57 @@
 use hyper::{Method, StatusCode};
-use hyper::server::{const_service, service_fn, Http, Request, Response};
-use hyper::header::{ContentLength, ContentType};
+use hyper::service::{make_service_fn, service_fn};
 use std::net::SocketAddr;
+use tokio;
 
-fn main() {
+static NOTFOUND: &[u8] = b"Not Found";
+
+#[tokio::main]
+async fn main() -> Result<(), hyper::Error> {
     let addr = "[::1]:3000".parse().expect("Failed to parse address");
-    run_echo_server(&addr).expect("Failed to run web server");
+    run_echo_server(&addr).await
 }
 
-fn run_echo_server(addr: &SocketAddr) -> Result<(), hyper::Error> {
-    let echo_service = const_service(service_fn(|req: Request| {
+async fn run_echo_server(addr: &SocketAddr) -> Result<(), hyper::Error> {
+    let echo_service = make_service_fn(move |_| async {
+        Ok::<_, hyper::Error>(service_fn(move |req: hyper::Request<hyper::Body>| async {
         // An easy way to implement routing is
         // to simply match the request's path
-        match (req.method(), req.path()) {
-            (&Method::Get, "/") => handle_root(),
-            (&Method::Post, "/echo") => handle_echo(req),
+        match (req.method(), req.uri().path()) {
+            (&Method::GET, "/") => handle_root(),
+            (&Method::POST, "/echo") => handle_echo(req),
             _ => handle_not_found(),
         }
-    }));
+    }))});
 
-    let server = Http::new().bind(addr, echo_service)?;
-    server.run()
+    let server = hyper::Server::bind(addr).serve(echo_service);
+    server.await
 }
 
-type ResponseResult = Result<Response<hyper::Body>, hyper::Error>;
+type ResponseResult = Result<hyper::Response<hyper::Body>, hyper::Error>;
 fn handle_root() -> ResponseResult {
     const MSG: &str = "Try doing a POST at /echo";
-    Ok(Response::new()
-        .with_header(ContentType::plaintext())
-        .with_header(ContentLength(MSG.len() as u64))
-        .with_body(MSG))
+    let response = hyper::Response::builder()
+        .header(hyper::header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .body(hyper::Body::from(MSG))
+        .unwrap();
+    Ok(response)
 }
 
-fn handle_echo(req: Request) -> ResponseResult {
+fn handle_echo(req: hyper::Request<hyper::Body>) -> ResponseResult {
     // The echoing is implemented by setting the response's
     // body to the request's body
-    Ok(Response::new().with_body(req.body()))
+    let response = hyper::Response::builder()
+        .header(hyper::header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .body(req.into_body())
+        .unwrap();
+    Ok(response)
 }
 
 fn handle_not_found() -> ResponseResult {
     // Return a 404 for every unsupported route
-    Ok(Response::new().with_status(StatusCode::NotFound))
+    let response = hyper::Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(NOTFOUND.into())
+        .unwrap();
+    Ok(response)
 }

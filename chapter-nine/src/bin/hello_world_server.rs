@@ -35,6 +35,5 @@ async fn run_with_service_function(addr: &SocketAddr) -> Result<(), hyper::Error
 
     // Run forever-ish...
     println!("Listening on http://{}", addr);
-    server.await?;
-    Ok(())
+    server.await
 }

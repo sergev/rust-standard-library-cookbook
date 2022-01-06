@@ -7,7 +7,7 @@ use tokio;
 const MESSAGE: &str = "Hello World!";
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn main() -> Result<(), hyper::Error> {
     // [::1] is the loopback address for IPv6, 3000 is a port
     let addr = "[::1]:3000".parse().expect("Failed to parse address");
     run_with_service_struct(&addr).await
@@ -15,13 +15,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
 // The following function does the same, but uses an explicitely created
 // struct HelloWorld that implements the Service trait
-async fn run_with_service_struct(addr: &SocketAddr) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn run_with_service_struct(addr: &SocketAddr) -> Result<(), hyper::Error> {
     let server = hyper::Server::bind(addr).serve(MakeHelloWorld {});
 
     // Run forever-ish...
     println!("Listening on http://{}", addr);
-    server.await?;
-    Ok(())
+    server.await
 }
 
 struct MakeHelloWorld;
